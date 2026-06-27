@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PasteBin Sederhana</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; color: #333; }
+        header { background: #1e88e5; color: white; padding: 15px; text-align: center; }
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+        input, select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
+        button { background: #1e88e5; color: white; border: none; padding: 10px 20px; cursor: pointer; margin: 10px 5px; border-radius: 4px; }
+        button:hover { background: #1565c0; }
+        .paste-list { margin-top: 20px; }
+        .paste-item { padding: 12px; border-bottom: 1px solid #ddd; cursor: pointer; border-radius: 4px; }
+        .paste-item:hover { background: #f0f0f0; }
+        .share-link { background: #e8f5e9; padding: 10px; border-radius: 4px; font-family: monospace; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>PasteBin Sederhana</h1>
+        <p>Bagikan teks dan kode dengan mudah</p>
+    </header>
+    <div class="container">
+        <h2>Buat Paste Baru</h2>
+        <textarea id="pasteContent" placeholder="Paste teks atau kode di sini..."></textarea>
+        
+        <div>
+            <label for="title">Judul (opsional):</label>
+            <input type="text" id="title" placeholder="Judul paste">
+        </div>
+        <div>
+            <label for="expiration">Expiration:</label>
+            <select id="expiration">
+                <option value="0">Tidak pernah</option>
+                <option value="3600">1 Jam</option>
+                <option value="86400">1 Hari</option>
+                <option value="604800">1 Minggu</option>
+                <option value="2592000">1 Bulan</option>
+            </select>
+        </div>
+        <div>
+            <label for="password">Password protection (opsional):</label>
+            <input type="password" id="password" placeholder="Masukkan password">
+        </div>
+
+        <button onclick="createPaste()">Simpan Paste</button>
+        <button onclick="clearForm()">Bersihkan</button>
+
+        <h2>Pastes Tersimpan</h2>
+        <div id="pasteList" class="paste-list"></div>
+    </div>
+
+    <script>
+        let pastes = JSON.parse(localStorage.getItem('pastes')) || [];
+
+        function generateId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        function renderPasteList() {
+            const now = Date.now();
+            pastes = pastes.filter(p => !p.expiresAt || p.expiresAt > now);
+            localStorage.setItem('pastes', JSON.stringify(pastes));
+
+            const list = document.getElementById('pasteList');
+            list.innerHTML = '';
+            pastes.forEach((paste, i) => {
+                const div = document.createElement('div');
+                div.className = 'paste-item';
+                let info = paste.expiresAt ? ` | Exp: ${new Date(paste.expiresAt).toLocaleDateString()}` : '';
+                if (paste.password) info += ' 🔒';
+                div.innerHTML = `<strong>${paste.title}</strong> - ${paste.id} ${info}`;
+                div.onclick = () => viewPaste(i);
+                list.appendChild(div);
+            });
+        }
+
+        function createPaste() {
+            const content = document.getElementById('pasteContent').value.trim();
+            if (!content) return alert('Isi paste tidak boleh kosong!');
+
+            const paste = {
+                id: generateId(),
+                title: document.getElementById('title').value.trim() || 'Untitled',
+                content: content,
+                date: new Date().toISOString(),
+                expiresAt: parseInt(document.getElementById('expiration').value) > 0 ? Date.now() + parseInt(document.getElementById('expiration').value) * 1000 : null,
+                password: document.getElementById('password').value.trim() || null
+            };
+
+            pastes.unshift(paste);
+            localStorage.setItem('pastes', JSON.stringify(pastes));
+            renderPasteList();
+            clearForm();
+
+            const shareUrl = `\( {window.location.origin} \){window.location.pathname}#${paste.id}`;
+            alert(`✅ Paste berhasil disimpan!\n\nShare link:\n${shareUrl}`);
+        }
+
+        function viewPaste(index) {
+            const paste = pastes.find(p => p.id === pastes[index].id);
+            if (!paste) return;
+
+            if (paste.expiresAt && Date.now() > paste.expiresAt) return alert('Paste sudah expired!');
+
+            if (paste.password) {
+                const pass = prompt('Masukkan password:');
+                if (pass !== paste.password) return alert('Password salah!');
+            }
+
+            const win = window.open('', '_blank');
+            win.document.write(`
+                <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${paste.title}</title>
+                <style>body{font-family:Arial;padding:20px;background:#f4f4f4;}
+                pre{background:#272822;color:#f8f8f2;padding:20px;overflow:auto;font-size:14px;white-space:pre-wrap;border-radius:6px;}
+                button{padding:10px 20px;margin:5px;background:#1e88e5;color:white;border:none;border-radius:4px;cursor:pointer;}</style></head>
+                <body>
+                    <h1>\( {paste.title} ( \){paste.id})</h1>
+                    <p>Dibuat: ${new Date(paste.date).toLocaleString()}</p>
+                    <button onclick="copyToClipboard()">Copy</button>
+                    <button onclick="showRaw()">Raw View</button>
+                    <button onclick="window.close()">Tutup</button>
+                    <pre><code>${paste.content.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>
+                    <script>
+                    function copyToClipboard(){navigator.clipboard.writeText(\`${paste.content.replace(/`/g,'\\`')}\`);alert('Disalin!');}
+                    function showRaw(){const w=window.open();w.document.write('<pre>'+${JSON.stringify(paste.content)}+ '</pre>');}
+                    <\/script>
+                </body></html>
+            `);
+        }
+
+        function clearForm() {
+            document.getElementById('pasteContent').value = '';
+            document.getElementById('title').value = '';
+            document.getElementById('expiration').value = '0';
+            document.getElementById('password').value = '';
+        }
+
+        // Handle direct access via hash (#ID)
+        function checkHash() {
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                const paste = pastes.find(p => p.id === hash);
+                if (paste) {
+                    const index = pastes.indexOf(paste);
+                    viewPaste(index);
+                } else {
+                    alert('Paste tidak ditemukan atau sudah expired.');
+                }
+            }
+        }
+
+        // Init
+        renderPasteList();
+        setTimeout(checkHash, 500);
+    </script>
+</body>
+</html>
